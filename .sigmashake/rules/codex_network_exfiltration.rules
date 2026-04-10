@@ -1,0 +1,53 @@
+# codex_network_exfiltration.rules — OpenAI Codex network exfiltration prevention.
+# Technology: codex | Capability: network
+# Covers: outbound HTTP with encoded data, base64 in URLs,
+# general network requests from Codex context, and raw socket tools.
+
+rule no-codex-outbound-http-with-data {
+  enabled true
+  priority 95
+  severity error
+  DENY execution
+  IF command REGEX "curl.*-d\\s+"
+  OR command REGEX "curl.*--data"
+  OR command REGEX "curl.*--data-raw"
+  OR command REGEX "wget.*--post-data"
+  OR command REGEX "wget.*--post-file"
+  MESSAGE "Outbound HTTP POST in Codex context. The Codex DNS-based exfiltration bypass used HTTP requests to encode stolen data (GitHub tokens, environment secrets) and transmit them to attacker-controlled endpoints. Outbound data transfer via POST is blocked."
+}
+
+rule no-codex-base64-in-url {
+  enabled true
+  priority 90
+  severity error
+  DENY execution
+  IF command REGEX "curl.*[A-Za-z0-9+/]{32,}={0,2}\\b"
+  OR command REGEX "wget.*[A-Za-z0-9+/]{32,}={0,2}\\b"
+  MESSAGE "Long base64-encoded string in URL. Codex data exfiltration encodes stolen secrets in base64 and embeds them in URL paths or parameters to bypass keyword-based security controls. URLs with base64 payloads (32+ chars) are blocked."
+}
+
+rule ask-codex-outbound-network {
+  enabled true
+  priority 75
+  severity warning
+  ASK execution
+  IF command STARTS_WITH "curl "
+  OR command STARTS_WITH "wget "
+  OR command REGEX "^curl\\b"
+  OR command REGEX "^wget\\b"
+  MESSAGE "Outbound network request from Codex context. OpenAI warns that Codex internet access 'exposes environments to security risks' and defaults network access to off. Verify the destination is a trusted development resource."
+  PROMPT "What is the destination URL? Is it a package registry, documentation site, or internal API? The Codex exfiltration attack used curl to transmit stolen GitHub tokens and source code to attacker-controlled servers."
+}
+
+rule log-codex-raw-socket-tools {
+  enabled true
+  priority 80
+  severity warning
+  LOG execution
+  IF command STARTS_WITH "nc "
+  OR command CONTAINS "netcat"
+  OR command STARTS_WITH "socat "
+  OR command REGEX "bash.*>/dev/tcp"
+  OR command REGEX "bash.*<&.*>/dev/tcp"
+  MESSAGE "Raw socket tool detected. Netcat/socat/bash /dev/tcp establish reverse shells or exfiltrate data outside HTTP, bypassing web-layer safeguards. These tools have no legitimate use in a Codex coding context."
+}

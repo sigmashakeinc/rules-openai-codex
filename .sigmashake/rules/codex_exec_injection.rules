@@ -1,0 +1,74 @@
+# codex_exec_injection.rules — OpenAI Codex execution safety.
+# Technology: codex | Capability: exec
+# Covers: branch command injection, DNS exfiltration, GitHub token theft,
+# arbitrary inline code execution, and sandbox enumeration.
+
+rule no-codex-branch-command-injection {
+  enabled true
+  priority 100
+  severity error
+  DENY execution
+  IF command REGEX "git\\s+(checkout|switch|branch).*[;&|`]"
+  OR command REGEX "git\\s+clone.*[;&|`]"
+  OR command REGEX "git\\s+checkout.*\\$\\("
+  OR command REGEX "git\\s+switch.*\\$\\("
+  MESSAGE "Branch command injection detected. Codex CVE (patched Feb 2026): injecting shell metacharacters into git branch names grants lateral movement and read/write access to the entire codebase. Git operations must use plain branch names without shell operators."
+}
+
+rule no-codex-dns-exfiltration {
+  enabled true
+  priority 100
+  severity error
+  DENY execution
+  IF command STARTS_WITH "dig "
+  OR command STARTS_WITH "nslookup "
+  OR command STARTS_WITH "host "
+  OR command REGEX "curl.*\\.burpcollaborator\\."
+  OR command REGEX "curl.*\\.oast\\."
+  OR command REGEX "curl.*\\.interact\\.sh"
+  OR command REGEX "curl.*\\.requestbin\\."
+  MESSAGE "DNS-based data exfiltration attempt. Codex sandbox safeguards can be bypassed using DNS queries to encode stolen data in subdomain lookups — a 'covert transport mechanism' documented by security researchers and confirmed by OpenAI. DNS resolution tools are blocked in Codex contexts."
+}
+
+rule no-codex-github-token-access {
+  enabled true
+  priority 100
+  severity error
+  DENY execution
+  IF command CONTAINS "GITHUB_TOKEN"
+  OR command CONTAINS "GH_TOKEN"
+  OR command REGEX "ghs_[a-zA-Z0-9]{20,}"
+  OR command CONTAINS "x-access-token"
+  OR command REGEX "github.*installation.*token"
+  OR command REGEX "Authorization.*ghs_"
+  MESSAGE "GitHub Installation Access Token access. The Codex branch injection attack (reported Dec 2025, patched Feb 2026) could steal GitHub Installation Access Tokens and execute bash on the code review container. Token access via shell commands is blocked."
+}
+
+rule ask-codex-inline-interpreter {
+  enabled true
+  priority 85
+  severity warning
+  ASK execution
+  IF command STARTS_WITH "python -c "
+  OR command STARTS_WITH "python3 -c "
+  OR command STARTS_WITH "node -e "
+  OR command STARTS_WITH "ruby -e "
+  OR command STARTS_WITH "perl -e "
+  OR command STARTS_WITH "php -r "
+  MESSAGE "Inline interpreter in Codex context. An arbitrary code execution CVE (disclosed Aug 2025, patched in Codex CLI v0.23.0) was exploited via one-liner interpreter calls. Inline code execution with -c/-e flags can run obfuscated payloads."
+  PROMPT "What does this inline code execute? Verify it does not access environment variables (GITHUB_TOKEN, AWS credentials), network resources, or files outside the project directory."
+}
+
+rule log-codex-sandbox-probe {
+  enabled true
+  priority 65
+  severity info
+  LOG execution
+  IF command EQUALS "env"
+  OR command EQUALS "printenv"
+  OR command EQUALS "whoami"
+  OR command STARTS_WITH "cat /proc/self"
+  OR command EQUALS "uname -a"
+  OR command EQUALS "id"
+  MESSAGE "Sandbox enumeration command logged. Attackers probe sandbox details (OS, user, env vars, /proc) before crafting Codex exploits. Logging for anomaly detection — multiple rapid probes indicate reconnaissance."
+}

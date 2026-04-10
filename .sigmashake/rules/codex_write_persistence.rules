@@ -1,0 +1,38 @@
+# codex_write_persistence.rules — OpenAI Codex write and persistence prevention.
+# Technology: codex | Capability: write
+# Covers: git config/hooks persistence, GitHub Actions workflow tampering,
+# and container config audit for sandbox-aware attacks.
+
+rule no-codex-git-config-write {
+  enabled true
+  priority 90
+  severity error
+  DENY write
+  IF path ENDS_WITH ".gitconfig"
+  OR path ENDS_WITH ".git/config"
+  OR path REGEX "\\.git/hooks/"
+  OR path REGEX "\\.git/hooks\\."
+  MESSAGE "Writing Git config or hooks in Codex context is blocked. The Codex branch injection attack achieved lateral movement by modifying Git configuration. Git hooks enable persistent code execution on every commit, push, or checkout — a durable persistence mechanism."
+}
+
+rule ask-codex-workflow-modification {
+  enabled true
+  priority 85
+  severity warning
+  ASK write
+  IF path REGEX "\\.github/workflows/.*\\.ya?ml"
+  MESSAGE "GitHub Actions workflow modification. Compromised Codex sessions with stolen GitHub Installation Access Tokens can inject malicious CI/CD steps that access repository secrets, push to package registries, or exfiltrate data on every future commit."
+  PROMPT "Review the workflow YAML for unexpected steps. Check for: steps accessing ${{ secrets.* }}, pushes to container registries, curl/wget calls to external endpoints, or newly added permissions: write-all."
+}
+
+rule log-codex-container-config-write {
+  enabled true
+  priority 60
+  severity info
+  LOG write
+  IF path ENDS_WITH "Dockerfile"
+  OR path ENDS_WITH "docker-compose.yml"
+  OR path ENDS_WITH "docker-compose.yaml"
+  OR path REGEX "docker-compose.*\\.ya?ml"
+  MESSAGE "Container configuration written in Codex context. Verify: no pulls from unverified image registries, no exposed ports to 0.0.0.0, no host network mode, and no privileged containers that could facilitate sandbox escape."
+}
