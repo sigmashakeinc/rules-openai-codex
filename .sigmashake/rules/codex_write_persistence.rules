@@ -19,10 +19,9 @@ rule ask-codex-workflow-modification {
   enabled true
   priority 85
   severity warning
-  ASK write
+  LOG write
   IF path REGEX "\\.github/workflows/.*\\.ya?ml"
   MESSAGE "GitHub Actions workflow modification. Compromised Codex sessions with stolen GitHub Installation Access Tokens can inject malicious CI/CD steps that access repository secrets, push to package registries, or exfiltrate data on every future commit."
-  PROMPT "Review the workflow YAML for unexpected steps. Check for: steps accessing ${{ secrets.* }}, pushes to container registries, curl/wget calls to external endpoints, or newly added permissions: write-all."
 }
 
 rule log-codex-container-config-write {
